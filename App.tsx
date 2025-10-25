@@ -5,7 +5,7 @@ import Toolbar from './components/Toolbar';
 import PropertiesPanel from './components/PropertiesPanel';
 import Header from './components/Header';
 import Footer from './components/Footer';
-import { Node, Link, ElementType, ModelData, Slice } from './types';
+import { Node, Link, ElementType, ModelData } from './types';
 import gunService from './services/gunService';
 import validationService from './services/validationService';
 import sliceService from './services/sliceService';
@@ -37,10 +37,10 @@ const App: React.FC = () => {
     const linksMap = new Map<string, Link>();
 
     const nodesGraph = gunService.getModel(currentModelId).get('nodes');
-    nodesGraph.map().on((nodeData, nodeId) => {
+    nodesGraph.map().on((nodeData: Partial<Node> | null, nodeId: string) => {
       if (nodeData) {
         const existingNode = nodesMap.get(nodeId) || {};
-        const updatedNode = { ...existingNode, ...nodeData, id: nodeId };
+        const updatedNode = { ...existingNode, ...nodeData, id: nodeId } as Node;
         nodesMap.set(nodeId, updatedNode);
         if (updatedNode.fx != null && updatedNode.fy != null) {
           manualPositionsRef.current.set(nodeId, { x: updatedNode.fx, y: updatedNode.fy });
@@ -54,10 +54,10 @@ const App: React.FC = () => {
     });
     
     const linksGraph = gunService.getModel(currentModelId).get('links');
-    linksGraph.map().on((linkData, linkId) => {
+    linksGraph.map().on((linkData: Partial<Link> | null, linkId: string) => {
        if (linkData) {
         const existingLink = linksMap.get(linkId) || {};
-        linksMap.set(linkId, { ...existingLink, ...linkData, id: linkId });
+        linksMap.set(linkId, { ...existingLink, ...linkData, id: linkId } as Link);
         setLinks(Array.from(linksMap.values()));
       } else {
         linksMap.delete(linkId);
@@ -269,11 +269,18 @@ const App: React.FC = () => {
   const handleCanvasClick = useCallback(() => setSelection(null), []);
   const handleFocusHandled = useCallback(() => setFocusOnRender(false), []);
 
-  const selectedItem = selection
-    ? selection.type === 'node'
-        ? { type: 'node' as const, data: nodes.find(n => n.id === selection.id) }
-        : { type: 'link' as const, data: links.find(l => l.id === selection.id) }
-    : null;
+  const selectedItem = useMemo(() => {
+    if (!selection) return null;
+
+    if (selection.type === 'node') {
+      const node = nodes.find(n => n.id === selection.id);
+      if (node) return { type: 'node' as const, data: node };
+    } else { // 'link'
+      const link = links.find(l => l.id === selection.id);
+      if (link) return { type: 'link' as const, data: link };
+    }
+    return null;
+  }, [selection, nodes, links]);
 
   return (
     <div className="w-screen h-screen overflow-hidden relative font-sans">
@@ -295,7 +302,7 @@ const App: React.FC = () => {
           onCanvasClick={handleCanvasClick}
       />
       <Toolbar onAddNode={handleAddNode} disabled={!modelId} />
-      {selectedItem?.data && (
+      {selectedItem && (
         <PropertiesPanel
           selectedItem={selectedItem}
           onUpdateNode={handleUpdateNode}

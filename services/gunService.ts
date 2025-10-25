@@ -1,11 +1,6 @@
-
-// FIX: Removed `import Gun from 'gun';` which was conflicting with the global 'Gun' declaration below.
-// The comment indicates Gun.js is loaded via a script tag, making the import unnecessary and erroneous.
+import Gun from 'gun';
 
 // Type definition for GUN instance is notoriously tricky; using 'any' is common practice.
-// We are using the global Gun object from the script tag in index.html.
-declare const Gun: any;
-
 class GunService {
   private gun: any;
 

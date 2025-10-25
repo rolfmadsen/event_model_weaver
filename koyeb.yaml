@@ -1,0 +1,15 @@
+name: event-model-weaver
+services:
+  - name: web
+    instanceType: free
+    build:
+      builder: buildpack
+      command: npm run build
+    run:
+      command: npm start
+    ports:
+      - port: 8080
+        protocol: HTTP
+    routes:
+      - path: /
+        port: 8080

@@ -25,8 +25,8 @@ const GRID_SIZE = 20;
 const TRANSITION_DURATION = 600;
 
 const measureText = (() => {
-    let svg: d3.Selection<SVGSVGElement, unknown, null, undefined> | null = null;
-    let textElement: d3.Selection<SVGTextElement, unknown, null, undefined> | null = null;
+    let svg: d3.Selection<SVGSVGElement, undefined, null, undefined> | null = null;
+    let textElement: d3.Selection<SVGTextElement, undefined, null, undefined> | null = null;
   
     return (text: string, style: { fontSize: string, fontFamily: string }): number => {
       if (!svg) {
@@ -128,8 +128,9 @@ const GraphCanvas: React.FC<GraphCanvasProps> = ({ nodes, links, selectedId, sli
 
   useEffect(() => {
     if (!svgRef.current || !zoomContainerRef.current) return;
-    const svg = d3.select(svgRef.current);
-    const zoomContainer = d3.select(zoomContainerRef.current);
+    // FIX: Add non-null assertion to help TypeScript infer correct d3.Selection type, preventing union type errors on chained methods.
+    const svg = d3.select(svgRef.current!);
+    const zoomContainer = d3.select(zoomContainerRef.current!);
 
     if (!svg.property('__zoom')) {
         const zoomHandler = d3.zoom<SVGSVGElement, unknown>().scaleExtent([0.2, 4]).on('zoom', (event) => {
@@ -141,8 +142,7 @@ const GraphCanvas: React.FC<GraphCanvasProps> = ({ nodes, links, selectedId, sli
     let potentialTargetNode: SimulationNode | null = null;
     let isConnectionValid = false;
     
-    // FIX: Refactored to use an if/else block to resolve TypeScript union type ambiguity between d3.Selection and d3.Transition.
-    const redrawLinksForNode = (nodeId: string, transition: d3.Transition<any, any, any, any> | null) => {
+    const redrawLinksForNode = (nodeId: string, useTransition: boolean) => {
         const affectedLinks = links.filter(l => l.source === nodeId || l.target === nodeId);
         affectedLinks.forEach(link => {
             const linkGroup = zoomContainer.select<SVGGElement>(`#link-${link.id}`);
@@ -151,11 +151,11 @@ const GraphCanvas: React.FC<GraphCanvasProps> = ({ nodes, links, selectedId, sli
                 const targetNode = nodesRef.current.get(link.target);
                 if (sourceNode && targetNode) {
                     const { path, midPoint } = calculateOrthogonalPath(sourceNode, targetNode);
-                    if (transition) {
-                        const t = linkGroup.transition(transition);
-                        t.select('.link-path').attr('d', path);
-                        t.select('.link-hitbox').attr('d', path);
-                        t.select('.link-label').attr('x', midPoint.x).attr('y', midPoint.y);
+                    if (useTransition) {
+                        const transition = linkGroup.transition().duration(TRANSITION_DURATION);
+                        transition.select('.link-path').attr('d', path);
+                        transition.select('.link-hitbox').attr('d', path);
+                        transition.select('.link-label').attr('x', midPoint.x).attr('y', midPoint.y);
                     } else {
                         linkGroup.select('.link-path').attr('d', path);
                         linkGroup.select('.link-hitbox').attr('d', path);
@@ -175,7 +175,7 @@ const GraphCanvas: React.FC<GraphCanvasProps> = ({ nodes, links, selectedId, sli
             d.fx = snappedX; d.fy = snappedY; d.x = snappedX; d.y = snappedY;
             const height = d.computedHeight ?? MIN_NODE_HEIGHT;
             d3.select(this).attr('transform', `translate(${snappedX - NODE_WIDTH/2}, ${snappedY - height/2})`);
-            redrawLinksForNode(d.id, null);
+            redrawLinksForNode(d.id, false);
         })
         .on('end', (_, d) => {
             if (showSlices) return;
@@ -184,7 +184,8 @@ const GraphCanvas: React.FC<GraphCanvasProps> = ({ nodes, links, selectedId, sli
 
     const linkDragHandler = d3.drag<SVGCircleElement, { parentNode: SimulationNode; pos: { x: number; y: number } }>()
         .on('start', function(event) {
-            d3.select(this.closest('.node-group')).raise();
+            // FIX: Add non-null assertion because the link handle is always inside a node group. This helps TypeScript resolve the correct selection type for .raise().
+            d3.select(this.closest('.node-group')!).raise();
             const [startX, startY] = d3.pointer(event, zoomContainer.node()!);
             zoomContainer.append('path').attr('class', 'temp-link').property('__startCoords__', { x: startX, y: startY })
                 .attr('d', `M${startX},${startY}L${startX},${startY}`).attr('marker-end', 'url(#arrowhead-linking)');
@@ -227,8 +228,6 @@ const GraphCanvas: React.FC<GraphCanvasProps> = ({ nodes, links, selectedId, sli
     
     // --- SLICE RENDERING ---
     const sliceContainer = zoomContainer.select<SVGGElement>('.slices');
-    // FIX: Corrected D3 data binding to provide type arguments to `selectAll` instead of `data` to match modern @types/d3.
-    // This resolves TypeScript errors related to `selectAll` overloads and subsequent `.merge` calls.
     const sliceRects = sliceContainer.selectAll<SVGRectElement, Slice>('rect').data(showSlices ? slices : [], d => d.id);
     sliceRects.exit().transition().duration(TRANSITION_DURATION).attr('opacity', 0).remove();
     const sliceEnter = sliceRects.enter().append('rect').attr('rx', 16).attr('ry', 16).attr('opacity', 0);
@@ -259,9 +258,25 @@ const GraphCanvas: React.FC<GraphCanvasProps> = ({ nodes, links, selectedId, sli
     linkEnter.append('path').attr('class', 'link-path');
     linkEnter.append('text').attr('class', 'link-label').attr('text-anchor', 'middle').attr('dy', '-6');
     const linkUpdate = linkGroups.merge(linkEnter);
-    linkUpdate.on('click', (event, d) => { event.stopPropagation(); onLinkClick(d as unknown as Link); }).on('dblclick', (event, d) => { event.stopPropagation(); onLinkDoubleClick(d as unknown as Link); });
-    
-    const t = svg.transition().duration(TRANSITION_DURATION);
+    linkUpdate
+      .on('click', (event, d) => {
+        event.stopPropagation();
+        onLinkClick({
+          id: d.id,
+          source: d.source.id,
+          target: d.target.id,
+          label: d.label,
+        });
+      })
+      .on('dblclick', (event, d) => {
+        event.stopPropagation();
+        onLinkDoubleClick({
+          id: d.id,
+          source: d.source.id,
+          target: d.target.id,
+          label: d.label,
+        });
+      });
     
     linkUpdate.each(function(d) {
         const group = d3.select(this);
@@ -270,14 +285,13 @@ const GraphCanvas: React.FC<GraphCanvasProps> = ({ nodes, links, selectedId, sli
         group.select('.link-path').attr('marker-end', isInterSlice ? 'url(#arrowhead-inter-slice)' : 'url(#arrowhead)');
         
         const { path, midPoint } = calculateOrthogonalPath(d.source, d.target);
-        group.transition(t).select('.link-path').attr('d', path);
-        group.transition(t).select('.link-hitbox').attr('d', path);
-        group.transition(t).select('.link-label').text(d.label).attr('x', midPoint.x).attr('y', midPoint.y);
+        group.transition().duration(TRANSITION_DURATION).select('.link-path').attr('d', path);
+        group.transition().duration(TRANSITION_DURATION).select('.link-hitbox').attr('d', path);
+        group.transition().duration(TRANSITION_DURATION).select('.link-label').text(d.label).attr('x', midPoint.x).attr('y', midPoint.y);
     });
 
-    // FIX: Corrected D3 data binding to provide type arguments to `selectAll` instead of `data` for type safety.
     const nodeElements = zoomContainer.select<SVGGElement>('.nodes').selectAll<SVGGElement, SimulationNode>('.node-group').data(Array.from(nodesRef.current.values()), d => d.id);
-    nodeElements.exit().transition(t).attr('opacity', 0).remove();
+    nodeElements.exit().transition().duration(TRANSITION_DURATION).attr('opacity', 0).remove();
     const nodeEnter = nodeElements.enter().append('g').attr('class', 'node-group').attr('id', d => `node-${d.id}`).attr('filter', 'url(#shadow)').call(moveHandler as any);
     nodeEnter.attr('transform', d => `translate(${(d.fx ?? d.x!) - NODE_WIDTH/2}, ${(d.fy ?? d.y!) - MIN_NODE_HEIGHT/2})`).attr('opacity', 0);
     
@@ -350,7 +364,7 @@ const GraphCanvas: React.FC<GraphCanvasProps> = ({ nodes, links, selectedId, sli
         .on('dblclick', (event, d) => { event.stopPropagation(); onNodeDoubleClick(d as Node); })
         .classed('selected', d => d.id === selectedId);
         
-    nodeUpdate.transition(t)
+    nodeUpdate.transition().duration(TRANSITION_DURATION)
         .attr('opacity', 1)
         .attr('transform', d => `translate(${(d.x!) - NODE_WIDTH/2}, ${(d.y!) - (d.computedHeight ?? MIN_NODE_HEIGHT)/2})`);
 

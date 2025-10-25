@@ -44,23 +44,23 @@ Event Modeling is a method of describing a system by illustrating the informatio
 
 ## Running Locally
 
-This is a static web application with no build step required.
+This project uses Vite for a modern, fast development experience.
 
-1.  Clone the repository.
-2.  Serve the project files using any local static file server. For example:
-    -   **Using `npx` (Node.js)**:
-        ```bash
-        npx serve .
-        ```
-    -   **Using Python**:
-        ```bash
-        python3 -m http.server
-        ```
-3.  Open your browser and navigate to the local URL provided by the server.
+1.  **Clone the repository.**
+2.  **Install dependencies**:
+    ```bash
+    npm install
+    ```
+3.  **Run the development server**:
+    ```bash
+    npm run dev
+    ```
+4.  Open your browser and navigate to the local URL provided by Vite.
 
 ## Tech Stack
 
 -   **React**: For building the user interface.
+-   **Vite**: For fast, modern frontend development and bundling.
 -   **D3.js**: For rendering and managing the interactive graph canvas.
 -   **GUN.js**: For the decentralized, real-time, peer-to-peer database.
 -   **TypeScript**: For type-safe JavaScript.

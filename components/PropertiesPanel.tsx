@@ -110,7 +110,7 @@ const NodeEditor: React.FC<{ node: Node; onUpdateNode: (node: Node) => void; onD
           <label className="block text-sm font-medium text-gray-500 mb-1">ID</label>
           <p className="text-xs text-gray-500 bg-gray-100 p-3 rounded-lg font-mono break-all">{localNode.id}</p>
       </div>
-      <div className="mt-8 border-t pt-6">
+      <div className="mt-8 border-t border-gray-200 pt-6">
         <button 
           onClick={() => onDeleteNode(node.id)}
           className="w-full flex items-center justify-center gap-2 bg-red-100 text-red-700 hover:bg-red-200 font-medium py-3 px-4 rounded-lg transition"
@@ -164,7 +164,7 @@ const LinkEditor: React.FC<{ link: Link; onUpdateLink: (link: Link) => void; onD
         <label className="block text-sm font-medium text-gray-500 mb-1">ID</label>
         <p className="text-xs text-gray-500 bg-gray-100 p-3 rounded-lg font-mono break-all">{localLink.id}</p>
       </div>
-      <div className="mt-8 border-t pt-6">
+      <div className="mt-8 border-t border-gray-200 pt-6">
         <button 
           onClick={() => onDeleteLink(link.id)}
           className="w-full flex items-center justify-center gap-2 bg-red-100 text-red-700 hover:bg-red-200 font-medium py-3 px-4 rounded-lg transition"

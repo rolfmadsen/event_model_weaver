@@ -2,27 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Event Model Weaver - P2P Edition</title>
-    <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,1,0" />
-    <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
-    <script type="importmap">
-{
-  "imports": {
-    "react-dom/": "https://esm.sh/react-dom@^19.2.0/",
-    "react/": "https://esm.sh/react@^19.2.0/",
-    "react": "https://esm.sh/react@^19.2.0",
-    "d3": "https://esm.sh/d3@^7.9.0",
-    "uuid": "https://esm.sh/uuid@^13.0.0",
-    "gun": "https://cdn.jsdelivr.net/npm/gun@0.2020.1239/gun.js"
-  }
-}
-</script>
 <style>
   .material-symbols-outlined {
     font-variation-settings:
@@ -32,7 +17,21 @@
     'opsz' 24
   }
 </style>
-<link rel="stylesheet" href="/index.css">
+<script type="importmap">
+{
+  "imports": {
+    "vite": "https://aistudiocdn.com/vite@^7.1.12",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.0",
+    "@tailwindcss/vite": "https://aistudiocdn.com/@tailwindcss/vite@^4.1.16",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "uuid": "https://aistudiocdn.com/uuid@^13.0.0",
+    "d3": "https://aistudiocdn.com/d3@^7.9.0",
+    "gun": "https://aistudiocdn.com/gun@^0.2020.1241"
+  }
+}
+</script>
 </head>
   <body class="bg-gray-50 text-gray-900 font-['Roboto',_sans-serif]">
     <div id="root"></div>
