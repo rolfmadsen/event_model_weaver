@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "vite build && tsc --noEmit",
     "preview": "vite preview",
-    "start": "serve dist -l 8080"
+    "start": "serve dist -l 8000"
   },
   "author": "Community",
   "dependencies": {
