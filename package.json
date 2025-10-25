@@ -1,0 +1,12 @@
+{
+  "name": "event-model-weaver-p2p",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Serverless, peer-to-peer Event Modeling tool using React and GUN.js.",
+  "scripts": {
+    "dev": "echo 'Run this project in a static file server environment.'",
+    "build": "echo 'This is a static project, no build step needed for this environment.'"
+  },
+  "author": "Community",
+  "dependencies": {}
+}
