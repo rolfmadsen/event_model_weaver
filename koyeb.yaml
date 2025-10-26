@@ -1,0 +1,39 @@
+name: event-model-weaver
+
+services:
+  # Service 1: Frontend (Unchanged)
+  - name: frontend
+    type: web # Keep as Web Service using npm start
+    instance_type: free
+    build_command: npm run build
+    run_command: npm start
+    ports:
+      - port: 8000
+        protocol: http
+        path: /
+    health_checks:
+      # Use TCP check for the simple serve command
+      - port: 8000
+        protocol: tcp
+
+  # Service 2: Relay (Now using Docker)
+  - name: gun-relay # Renamed from 'relay' for clarity if needed
+    type: web
+    instance_type: free
+    docker:
+      dockerfile: Dockerfile # Tell Koyeb to use the Dockerfile
+    ports:
+      - port: 8000 # Your server listens on $PORT (which Koyeb sets to 8000 here)
+        protocol: http
+        path: /gun # Traffic for /gun goes to this port
+    health_checks:
+      # Use TCP check, as /health isn't guaranteed inside Docker easily at first
+      - port: 8000
+        protocol: tcp
+
+# Routes (Unchanged)
+routes:
+  - path: /
+    service: frontend
+  - path: /gun
+    service: gun-relay # Match service name above
