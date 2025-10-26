@@ -1,11 +1,13 @@
-// relay-server.js (Simplified)
+// Simple GUN relay server for real-time collaboration
+// ES Module syntax for modern Node.js
+// Stateless-friendly: no file storage, all data synced between peers
 
-import Gun from 'gun'; // Only import the core GUN library
+import Gun from 'gun';
 import http from 'http';
 
 // Create HTTP server
 const server = http.createServer((req, res) => {
-  // Enable CORS (essential)
+  // Enable CORS for cross-origin requests
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -23,32 +25,35 @@ const server = http.createServer((req, res) => {
     return;
   }
   
-  // Return 404 for other requests
+  // For other requests, return 404
   res.writeHead(404);
   res.end('Not found');
 });
 
-// Attach GUN to the server - MINIMAL options
-// We remove localStorage and radisk as this is a stateless relay
-const gun = Gun({
-  web: server,    // Crucial: Attaches GUN's WebSocket handler
-  localStorage: false,
-  radisk: false
+// Attach GUN to the server
+// NO file storage - relay only (stateless, perfect for Koyeb)
+const gun = Gun({ 
+  web: server,
+  localStorage: false,  // Stateless mode
+  radisk: false         // No disk storage
 });
 
-// Use PORT from environment (Koyeb sets this) or default to 8765 for local dev
-const PORT = process.env.PORT || 8765; // Still use 8765 locally
+// Use PORT from environment (Koyeb sets this) or default to 8765
+const PORT = process.env.PORT || 8765;
 
-server.listen(PORT, '0.0.0.0', () => { // Listen on all interfaces
+server.listen(PORT, '0.0.0.0', () => {
   console.log('╔════════════════════════════════════════════╗');
-  console.log('║   🔫 GUN Relay Server Running (Simplified) ║');
+  console.log('║   🔫 GUN Relay Server Running             ║');
   console.log('╠════════════════════════════════════════════╣');
   console.log(`║   Port: ${PORT.toString().padEnd(35)} ║`);
-  console.log('║   Mode: Stateless Relay                   ║');
+  console.log('║   Mode: Stateless Relay (Koyeb-ready)     ║');
   console.log('╚════════════════════════════════════════════╝');
+  console.log('\n💡 Update your gunService.ts peers to:');
+  console.log(`   Local:  ['http://localhost:${PORT}/gun']`);
+  console.log(`   Koyeb:  ['https://your-app.koyeb.app/gun']\n`);
 });
 
-// Log connections (useful for debugging)
+// Log connections for debugging
 gun.on('hi', (peer) => {
   console.log('🤝 Peer connected:', new Date().toISOString());
 });
@@ -57,7 +62,7 @@ gun.on('bye', (peer) => {
   console.log('👋 Peer disconnected:', new Date().toISOString());
 });
 
-// Graceful shutdown (unchanged)
+// Graceful shutdown
 process.on('SIGINT', () => {
   console.log('\n🛑 Shutting down relay server...');
   server.close(() => {
