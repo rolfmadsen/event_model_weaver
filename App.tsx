@@ -46,6 +46,7 @@ const App: React.FC = () => {
       window.location.hash = currentModelId;
     }
     setModelId(currentModelId);
+    console.log(`Initializing App with modelId: ${currentModelId}`);
     
     // Subscribe to nodes
     const nodesGraph = gunService.getModel(currentModelId).get('nodes');
