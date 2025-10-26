@@ -1,71 +1,64 @@
-// relay-server.js (Simplified)
+// relay-server.js (Temporary WebSocket Echo Server)
 
-import Gun from 'gun'; // Only import the core GUN library
+import { WebSocketServer } from 'ws';
 import http from 'http';
 
-// Create HTTP server
+// Create a simple HTTP server
 const server = http.createServer((req, res) => {
-  // Enable CORS (essential)
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  
-  if (req.method === 'OPTIONS') {
-    res.writeHead(200);
-    res.end();
-    return;
-  }
-  
   // Basic health check endpoint
   if (req.url === '/health' || req.url === '/') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('GUN relay server is running');
+    res.end('Minimal WS Server Running'); // Change message slightly
     return;
   }
   
-  // Return 404 for other requests
+  // Respond 404 for anything else (like /gun)
   res.writeHead(404);
-  res.end('Not found');
+  res.end('Not Found');
 });
 
-// Attach GUN to the server - MINIMAL options
-// We remove localStorage and radisk as this is a stateless relay
-const gun = Gun({
-  web: server,    // Crucial: Attaches GUN's WebSocket handler
-  localStorage: false,
-  radisk: false
+// Create a WebSocket server attached to the HTTP server
+// It will handle requests that try to upgrade the connection
+const wss = new WebSocketServer({ server }); // NOTE: No path specified here
+
+wss.on('connection', function connection(ws, req) {
+  const clientIp = req.socket.remoteAddress;
+  console.log(`WebSocket client connected: ${clientIp}`);
+
+  ws.on('error', console.error);
+
+  ws.on('message', function message(data) {
+    console.log(`Received: ${data}`);
+    // Echo the message back to the client
+    ws.send(`Echo: ${data}`);
+  });
+
+  ws.on('close', () => {
+    console.log(`WebSocket client disconnected: ${clientIp}`);
+  });
+
+  ws.send('Welcome to the Echo Server!');
 });
 
-// Use PORT from environment (Koyeb sets this) or default to 8765 for local dev
-const PORT = process.env.PORT || 8765; // Still use 8765 locally
+// Use PORT from environment (Koyeb sets this) or fallback for local dev
+const PORT = process.env.PORT || 8765; // Keep 8765 fallback
 
-server.listen(PORT, '0.0.0.0', () => { // Listen on all interfaces
-  console.log('╔════════════════════════════════════════════╗');
-  console.log('║   🔫 GUN Relay Server Running (Simplified) ║');
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`╔════════════════════════════════════════════╗`);
+  console.log(`║   🧪 Minimal WebSocket Server Running     ║`);
   console.log('╠════════════════════════════════════════════╣');
-  console.log(`║   Port: ${PORT.toString().padEnd(35)} ║`);
-  console.log('║   Mode: Stateless Relay                   ║');
+  console.log(`║   Listening on port ${PORT.toString().padEnd(25)} ║`);
   console.log('╚════════════════════════════════════════════╝');
 });
 
-// Log connections (useful for debugging)
-gun.on('hi', (peer) => {
-  console.log('🤝 Peer connected:', new Date().toISOString());
-});
-
-gun.on('bye', (peer) => {
-  console.log('👋 Peer disconnected:', new Date().toISOString());
-});
-
-// Graceful shutdown (unchanged)
+// Graceful shutdown (same as before)
 process.on('SIGINT', () => {
-  console.log('\n🛑 Shutting down relay server...');
+  console.log('\n🛑 Shutting down server...');
   server.close(() => {
     console.log('✅ Server closed');
     process.exit(0);
   });
 });
-
 process.on('SIGTERM', () => {
   console.log('\n🛑 Received SIGTERM, shutting down...');
   server.close(() => {
