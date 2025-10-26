@@ -47,10 +47,11 @@ const App: React.FC = () => {
     }
     setModelId(currentModelId);
     console.log(`Initializing App with modelId: ${currentModelId}`);
-    
+
     // Subscribe to nodes
     const nodesGraph = gunService.getModel(currentModelId).get('nodes');
     nodesGraph.map().on((nodeData: Partial<Node> | null, nodeId: string) => {
+      console.log(`[Nodes Sub] Received data for ${nodeId}:`, nodeData);
       setNodes(prevNodes => {
         const nodesMap = new Map(prevNodes.map(n => [n.id, n]));
         if (nodeData) {
@@ -71,7 +72,8 @@ const App: React.FC = () => {
     // Subscribe to links
     const linksGraph = gunService.getModel(currentModelId).get('links');
     linksGraph.map().on((linkData: Partial<Link> | null, linkId: string) => {
-       setLinks(prevLinks => {
+      console.log(`[Links Sub] Received data for ${linkId}:`, linkData); 
+      setLinks(prevLinks => {
         const linksMap = new Map(prevLinks.map(l => [l.id, l]));
         if (linkData) {
           const existingLink = linksMap.get(linkId) || {};
