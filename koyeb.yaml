@@ -1,15 +1,39 @@
-name: event-model-weaver
+# This file tells Koyeb how to deploy your app
+# It defines both the frontend and backend services
+
+name: event-model-weaver # This is the name of your Koyeb App
+
 services:
-  - name: web
-    instanceType: free
-    build:
-      builder: buildpack
-      command: npm run build
-    run:
-      command: npm start
+  # Service 1: The React Frontend (Static Site)
+  - name: frontend
+    type: static_site
+    instance_type: free
+    # How to build the static site
+    build_command: npm run build
+    # The folder Vite builds to
+    output_dir: dist
+
+  # Service 2: The GUN.js Backend Relay (Web Service)
+  - name: relay
+    type: web
+    instance_type: free
+    # The command to run your relay server
+    run_command: npm run relay
+    # Your relay-server.js correctly uses process.env.PORT
+    # Koyeb will set this (usually to 8080) and listen on it.
     ports:
       - port: 8080
-        protocol: HTTP
-    routes:
-      - path: /
+        protocol: http
+    # The health check you built into relay-server.js
+    health_checks:
+      - path: /health
         port: 8080
+
+# Routing rules for your domain
+routes:
+  # Send root traffic (/) to the frontend
+  - path: /
+    service: frontend
+  # Send /gun traffic (including WebSockets) to the relay
+  - path: /gun
+    service: relay
