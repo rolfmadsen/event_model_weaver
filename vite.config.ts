@@ -33,4 +33,14 @@ export default defineConfig({
       'gun/lib/rindexed',
     ],
   },
+
+  server: {
+    proxy: {
+      // Proxy all requests for /gun to your running relay server
+      '/gun': {
+        target: 'http://localhost:8765', // The relay server's address
+        ws: true, // Enable WebSocket proxying (crucial for GUN)
+      },
+    },
+  },
 })

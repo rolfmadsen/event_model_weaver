@@ -5,7 +5,7 @@
   "description": "Serverless, peer-to-peer Event Modeling tool using React and GUN.js.",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently \"vite\" \"node relay-server.js\"",
     "build": "vite build && tsc --noEmit",
     "preview": "vite preview",
     "start": "serve dist -l 8000",
@@ -26,6 +26,7 @@
     "@types/react-dom": "^19.2.2",
     "@vitejs/plugin-react": "^5.1.0",
     "autoprefixer": "^10.4.21",
+    "concurrently": "^9.2.1",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.18",
     "typescript": "^5.9.3",

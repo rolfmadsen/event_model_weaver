@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import * as d3 from 'd3';
 import { Node, Link, SimulationNode, SimulationLink, Slice } from '../types';
 import { ELEMENT_STYLE, MIN_NODE_HEIGHT, NODE_WIDTH } from '../constants';
@@ -19,6 +19,7 @@ interface GraphCanvasProps {
   onNodeDrag: (nodeId: string, x: number, y: number) => void;
   onAddLink: (sourceId: string, targetId: string) => void;
   onCanvasClick: (event: React.MouseEvent<SVGSVGElement, MouseEvent>) => void;
+  recenterViewToggle: boolean;
 }
 
 const GRID_SIZE = 20;
@@ -97,18 +98,40 @@ function calculateOrthogonalPath(source: SimulationNode, target: SimulationNode)
 }
 
 
-const GraphCanvas: React.FC<GraphCanvasProps> = ({ nodes, links, selectedId, slices, nodeSliceMap, swimlanePositions, showSlices, onNodeClick, onLinkClick, onNodeDoubleClick, onLinkDoubleClick, onNodeDrag, onAddLink, onCanvasClick }) => {
+const GraphCanvas: React.FC<GraphCanvasProps> = ({ 
+  nodes, 
+  links, 
+  selectedId, 
+  slices, 
+  nodeSliceMap, 
+  swimlanePositions, 
+  showSlices, 
+  recenterViewToggle,
+  onNodeClick, 
+  onLinkClick, 
+  onNodeDoubleClick, 
+  onLinkDoubleClick, 
+  onNodeDrag, 
+  onAddLink, 
+  onCanvasClick 
+}) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const zoomContainerRef = useRef<SVGGElement>(null);
   const nodesRef = useRef<Map<string, SimulationNode>>(new Map());
 
+  const zoomHandlerRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
+  const hasCenteredRef = useRef(false); // Tracks initial load
+  const lastRecenterToggleRef = useRef(recenterViewToggle); // Tracks import toggle
+
   const onAddLinkRef = useRef(onAddLink);
   useEffect(() => { onAddLinkRef.current = onAddLink; }, [onAddLink]);
 
-  useEffect(() => {
+  const simulationNodeMap = useMemo(() => {
     const nodeMap = new Map<string, SimulationNode>();
+    const prevNodeMap = nodesRef.current; // Get previous state for computedHeight
+
     nodes.forEach(node => {
-        const existing = nodesRef.current.get(node.id);
+        const existing = prevNodeMap.get(node.id);
         const position = showSlices
           ? swimlanePositions.get(node.id) || { x: node.x, y: node.y }
           : { x: node.fx ?? node.x, y: node.fy ?? node.y };
@@ -122,23 +145,64 @@ const GraphCanvas: React.FC<GraphCanvasProps> = ({ nodes, links, selectedId, sli
             computedHeight: existing?.computedHeight,
         });
     });
-    nodesRef.current = nodeMap;
+    nodesRef.current = nodeMap; // Keep the ref updated for drag handlers
+    return nodeMap;
   }, [nodes, showSlices, swimlanePositions]);
 
 
+  // --- UNIFIED useEffect for ALL D3 LOGIC ---
   useEffect(() => {
     if (!svgRef.current || !zoomContainerRef.current) return;
-    // FIX: Add non-null assertion to help TypeScript infer correct d3.Selection type, preventing union type errors on chained methods.
     const svg = d3.select(svgRef.current!);
     const zoomContainer = d3.select(zoomContainerRef.current!);
 
+    // --- Initialize Zoom Handler ---
+    // This now uses D3's internal __zoom property check and stores the ref
     if (!svg.property('__zoom')) {
         const zoomHandler = d3.zoom<SVGSVGElement, unknown>().scaleExtent([0.2, 4]).on('zoom', (event) => {
             zoomContainer.attr('transform', event.transform);
         });
+        zoomHandlerRef.current = zoomHandler; // Store the handler
         svg.call(zoomHandler).on('dblclick.zoom', null);
     }
 
+    // --- Centering Logic ---
+    // This logic is now inside the same hook, ensuring zoomHandlerRef.current exists
+    const isInitialLoad = !hasCenteredRef.current;
+    const didToggleChange = lastRecenterToggleRef.current !== recenterViewToggle;
+
+    if (simulationNodeMap.size > 0 && svgRef.current && zoomHandlerRef.current && (isInitialLoad || didToggleChange)) {
+      
+      if (isInitialLoad) {
+        hasCenteredRef.current = true; // Mark initial load as done
+      }
+      if (didToggleChange) {
+        lastRecenterToggleRef.current = recenterViewToggle; // Update ref to new toggle value
+      }
+
+      const svgNode = svgRef.current;
+      const width = svgNode.clientWidth;
+      const height = svgNode.clientHeight;
+
+      const nodeArray = Array.from(simulationNodeMap.values());
+      const avgX = d3.mean(nodeArray, d => d.x!) ?? width / 2;
+      const avgY = d3.mean(nodeArray, d => d.y!) ?? height / 2;
+      
+      if (avgX !== 0 || avgY !== 0) {
+          const transform = d3.zoomIdentity
+              .translate(width / 2 - avgX, height / 2 - avgY)
+              .scale(1); 
+
+          // Apply the transform
+          d3.select(svgNode)
+            .transition().duration(isInitialLoad ? 600 : 300) // Faster transition for re-center
+            .call(zoomHandlerRef.current.transform, transform);
+      }
+    }
+    // --- End Centering Logic ---
+
+
+    // --- Start D3 Rendering Logic (unchanged) ---
     let potentialTargetNode: SimulationNode | null = null;
     let isConnectionValid = false;
     
@@ -147,8 +211,8 @@ const GraphCanvas: React.FC<GraphCanvasProps> = ({ nodes, links, selectedId, sli
         affectedLinks.forEach(link => {
             const linkGroup = zoomContainer.select<SVGGElement>(`#link-${link.id}`);
             if (!linkGroup.empty()) {
-                const sourceNode = nodesRef.current.get(link.source);
-                const targetNode = nodesRef.current.get(link.target);
+                const sourceNode = simulationNodeMap.get(link.source);
+                const targetNode = simulationNodeMap.get(link.target);
                 if (sourceNode && targetNode) {
                     const { path, midPoint } = calculateOrthogonalPath(sourceNode, targetNode);
                     if (useTransition) {
@@ -184,7 +248,6 @@ const GraphCanvas: React.FC<GraphCanvasProps> = ({ nodes, links, selectedId, sli
 
     const linkDragHandler = d3.drag<SVGCircleElement, { parentNode: SimulationNode; pos: { x: number; y: number } }>()
         .on('start', function(event) {
-            // FIX: Add non-null assertion because the link handle is always inside a node group. This helps TypeScript resolve the correct selection type for .raise().
             d3.select(this.closest('.node-group')!).raise();
             const [startX, startY] = d3.pointer(event, zoomContainer.node()!);
             zoomContainer.append('path').attr('class', 'temp-link').property('__startCoords__', { x: startX, y: startY })
@@ -233,7 +296,7 @@ const GraphCanvas: React.FC<GraphCanvasProps> = ({ nodes, links, selectedId, sli
     const sliceEnter = sliceRects.enter().append('rect').attr('rx', 16).attr('ry', 16).attr('opacity', 0);
     sliceRects.merge(sliceEnter)
       .each(function(d) {
-        const sliceNodes = Array.from(d.nodeIds).map(id => nodesRef.current.get(id)!);
+        const sliceNodes = Array.from(d.nodeIds).map(id => simulationNodeMap.get(id)!);
         if (sliceNodes.length === 0 || sliceNodes.some(n => !n)) return;
         const xCoords = sliceNodes.map(n => n.x!);
         const yCoords = sliceNodes.map(n => n.y!);
@@ -249,7 +312,7 @@ const GraphCanvas: React.FC<GraphCanvasProps> = ({ nodes, links, selectedId, sli
       .attr('fill', d => d.color).attr('stroke', d => d3.color(d.color)!.darker(0.5).toString()).attr('stroke-width', 2).attr('opacity', 1);
 
 
-    const simulationLinks: SimulationLink[] = links.map(l => ({...l, source: nodesRef.current.get(l.source)!, target: nodesRef.current.get(l.target)!})).filter(l => l.source && l.target);
+    const simulationLinks: SimulationLink[] = links.map(l => ({...l, source: simulationNodeMap.get(l.source)!, target: simulationNodeMap.get(l.target)!})).filter(l => l.source && l.target);
 
     const linkGroups = zoomContainer.select<SVGGElement>('.links').selectAll<SVGGElement, SimulationLink>('.link-group').data(simulationLinks, d => d.id);
     linkGroups.exit().remove();
@@ -290,7 +353,7 @@ const GraphCanvas: React.FC<GraphCanvasProps> = ({ nodes, links, selectedId, sli
         group.transition().duration(TRANSITION_DURATION).select('.link-label').text(d.label).attr('x', midPoint.x).attr('y', midPoint.y);
     });
 
-    const nodeElements = zoomContainer.select<SVGGElement>('.nodes').selectAll<SVGGElement, SimulationNode>('.node-group').data(Array.from(nodesRef.current.values()), d => d.id);
+    const nodeElements = zoomContainer.select<SVGGElement>('.nodes').selectAll<SVGGElement, SimulationNode>('.node-group').data(Array.from(simulationNodeMap.values()), d => d.id);
     nodeElements.exit().transition().duration(TRANSITION_DURATION).attr('opacity', 0).remove();
     const nodeEnter = nodeElements.enter().append('g').attr('class', 'node-group').attr('id', d => `node-${d.id}`).attr('filter', 'url(#shadow)').call(moveHandler as any);
     nodeEnter.attr('transform', d => `translate(${(d.fx ?? d.x!) - NODE_WIDTH/2}, ${(d.fy ?? d.y!) - MIN_NODE_HEIGHT/2})`).attr('opacity', 0);
@@ -303,6 +366,13 @@ const GraphCanvas: React.FC<GraphCanvasProps> = ({ nodes, links, selectedId, sli
     nodeUpdate.each(function(d) {
         const group = d3.select(this);
         const style = ELEMENT_STYLE[d.type];
+        
+        if (!style) {
+          console.error(`Skipping render for node ${d.id}: Invalid or missing type "${d.type}"`);
+          group.attr('opacity', 0);
+          return; 
+        }
+
         const textElement = group.select<SVGTextElement>('.node-text');
         textElement.selectAll('*').remove();
         
@@ -368,7 +438,24 @@ const GraphCanvas: React.FC<GraphCanvasProps> = ({ nodes, links, selectedId, sli
         .attr('opacity', 1)
         .attr('transform', d => `translate(${(d.x!) - NODE_WIDTH/2}, ${(d.y!) - (d.computedHeight ?? MIN_NODE_HEIGHT)/2})`);
 
-  }, [nodes, links, onNodeDrag, onNodeClick, onLinkClick, onNodeDoubleClick, onLinkDoubleClick, selectedId, showSlices, slices, nodeSliceMap, swimlanePositions]);
+  // --- MODIFIED Dependency Array ---
+  // We add recenterViewToggle here to trigger this entire effect on import
+  }, [
+    simulationNodeMap, 
+    links, 
+    onNodeDrag, 
+    onNodeClick, 
+    onLinkClick, 
+    onNodeDoubleClick, 
+    onLinkDoubleClick, 
+    selectedId, 
+    showSlices, 
+    slices, 
+    nodeSliceMap, 
+    swimlanePositions,
+    recenterViewToggle // <-- Added
+  ]);
+  // --- END UNIFIED useEffect ---
 
   const style = `
     .cursor-crosshair { cursor: crosshair; }

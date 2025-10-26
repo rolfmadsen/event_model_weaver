@@ -29,6 +29,9 @@ const App: React.FC = () => {
   const [activeUsers, setActiveUsers] = useState<Record<string, UserPresence>>({});
   const [cursors, setCursors] = useState<Record<string, CursorPosition>>({});
   
+  // This is where recenterToggle is defined
+  const [recenterToggle, setRecenterToggle] = useState(false);
+
   const manualPositionsRef = useRef(new Map<string, { x: number, y: number }>());
   const presenceIntervalRef = useRef<number | undefined>(undefined);
   const cursorThrottleRef = useRef<number | undefined>(undefined);
@@ -356,6 +359,10 @@ const App: React.FC = () => {
             data.links.forEach(link => modelGraph.get('links').get(link.id).put(link as any));
             
             setSelection(null);
+
+            // This updates the state
+            setRecenterToggle(prev => !prev);
+
         } catch (error) {
             alert('Failed to import model: ' + (error as Error).message);
         }
@@ -442,6 +449,7 @@ const App: React.FC = () => {
         );
       })}
 
+      {/* This is the line from the error. It now includes recenterToggle */}
       <GraphCanvas 
           nodes={nodes} 
           links={links}
@@ -450,6 +458,7 @@ const App: React.FC = () => {
           nodeSliceMap={nodeSliceMap}
           swimlanePositions={swimlanePositions}
           showSlices={showSlices}
+          recenterViewToggle={recenterToggle} 
           onNodeClick={handleNodeClick}
           onLinkClick={handleLinkClick}
           onNodeDoubleClick={handleNodeDoubleClick}

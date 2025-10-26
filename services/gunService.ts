@@ -27,9 +27,14 @@ class GunService {
   private gun: any;
 
   constructor() {
-    // Connect to local relay server for real-time collaboration
+    // This is the only URL logic you need now.
+    // It builds the relay URL from the current page's origin.
+    // - In Dev: "http://localhost:5173/gun" (which Vite will proxy)
+    // - In Prod: "https://your-app.com/gun" (which your server will route)
+    const relayUrl = `${window.location.origin}/gun`;
+
     this.gun = Gun({
-      peers: ['http://localhost:8765/gun'],
+      peers: [relayUrl],
       rtc: {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
@@ -40,8 +45,8 @@ class GunService {
       localStorage: true,
       radisk: true,
     });
-    
-    console.log('GUN initialized with local relay server');
+
+    console.log(`GUN initialized with relay: ${relayUrl}`);
   }
 
   /**
@@ -49,7 +54,7 @@ class GunService {
    */
   getModel(modelId: string) {
     if (!modelId) {
-      throw new Error("Model ID cannot be null or empty.");
+      throw new Error('Model ID cannot be null or empty.');
     }
     return this.gun.get(`event-model-weaver/${modelId}`);
   }
@@ -57,31 +62,39 @@ class GunService {
   /**
    * Update user presence - shows who is viewing the model
    */
-  updatePresence(modelId: string, userId: string, userName: string, color: string) {
+  updatePresence(
+    modelId: string,
+    userId: string,
+    userName: string,
+    color: string
+  ) {
     const presenceRef = this.gun.get(`presence/${modelId}/${userId}`);
-    presenceRef.put({
-      userId,
-      userName,
-      color,
-      modelId,
-      lastSeen: Date.now()
-    }, (ack: any) => {
-      if (ack.err) {
-        console.error('Failed to update presence:', ack.err);
+    presenceRef.put(
+      {
+        userId,
+        userName,
+        color,
+        modelId,
+        lastSeen: Date.now(),
+      },
+      (ack: any) => {
+        if (ack.err) {
+          console.error('Failed to update presence:', ack.err);
+        }
       }
-    });
+    );
   }
 
   /**
    * Subscribe to presence updates - get notified when users join/leave
    */
   subscribeToPresence(
-    modelId: string, 
+    modelId: string,
     callback: (users: Record<string, UserPresence>) => void
   ): () => void {
     const presenceRef = this.gun.get(`presence/${modelId}`);
     const users: Record<string, UserPresence> = {};
-    
+
     presenceRef.map().on((userData: any, userId: string) => {
       if (userData && userData.lastSeen && !userData._deleted) {
         // Filter out users who haven't been seen in 30 seconds
@@ -109,16 +122,19 @@ class GunService {
    */
   updateCursor(modelId: string, userId: string, x: number, y: number) {
     const cursorRef = this.gun.get(`cursors/${modelId}/${userId}`);
-    cursorRef.put({
-      userId,
-      x,
-      y,
-      timestamp: Date.now()
-    }, (ack: any) => {
-      if (ack.err) {
-        console.error('Failed to update cursor:', ack.err);
+    cursorRef.put(
+      {
+        userId,
+        x,
+        y,
+        timestamp: Date.now(),
+      },
+      (ack: any) => {
+        if (ack.err) {
+          console.error('Failed to update cursor:', ack.err);
+        }
       }
-    });
+    );
   }
 
   /**
