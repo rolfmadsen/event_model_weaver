@@ -40,7 +40,7 @@ const measureText = (() => {
 })();
 
 function wrapText(text: string, width: number, padding: number = 20): string[] {
-  const words = text.split(/\s+/).reverse();
+  const words = (text || '').split(/\s+/).reverse();
   const lines: string[] = [];
   let line: string[] = [];
   let word;

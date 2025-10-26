@@ -22,7 +22,6 @@ const App: React.FC = () => {
   const manualPositionsRef = useRef(new Map<string, { x: number, y: number }>());
 
   useEffect(() => {
-    // --- Model Initialization from URL Hash ---
     const getModelIdFromHash = () => window.location.hash.replace(/^#/, '');
     
     let currentModelId = getModelIdFromHash();
@@ -33,40 +32,43 @@ const App: React.FC = () => {
     setModelId(currentModelId);
     
     // --- GUN Data Subscriptions ---
-    const nodesMap = new Map<string, Node>();
-    const linksMap = new Map<string, Link>();
-
     const nodesGraph = gunService.getModel(currentModelId).get('nodes');
     nodesGraph.map().on((nodeData: Partial<Node> | null, nodeId: string) => {
-      if (nodeData) {
-        const existingNode = nodesMap.get(nodeId) || {};
-        const updatedNode = { ...existingNode, ...nodeData, id: nodeId } as Node;
-        nodesMap.set(nodeId, updatedNode);
-        if (updatedNode.fx != null && updatedNode.fy != null) {
-          manualPositionsRef.current.set(nodeId, { x: updatedNode.fx, y: updatedNode.fy });
+      setNodes(prevNodes => {
+        const nodesMap = new Map(prevNodes.map(n => [n.id, n]));
+        if (nodeData) {
+          const existingNode = nodesMap.get(nodeId) || {};
+          const updatedNode = { ...existingNode, ...nodeData, id: nodeId } as Node;
+          nodesMap.set(nodeId, updatedNode);
+
+          if (updatedNode.fx != null && updatedNode.fy != null) {
+            manualPositionsRef.current.set(nodeId, { x: updatedNode.fx, y: updatedNode.fy });
+          }
+        } else {
+          nodesMap.delete(nodeId);
+          manualPositionsRef.current.delete(nodeId);
         }
-        setNodes(Array.from(nodesMap.values()));
-      } else {
-         nodesMap.delete(nodeId);
-         manualPositionsRef.current.delete(nodeId);
-         setNodes(Array.from(nodesMap.values()));
-      }
+        return Array.from(nodesMap.values());
+      });
     });
     
     const linksGraph = gunService.getModel(currentModelId).get('links');
     linksGraph.map().on((linkData: Partial<Link> | null, linkId: string) => {
-       if (linkData) {
-        const existingLink = linksMap.get(linkId) || {};
-        linksMap.set(linkId, { ...existingLink, ...linkData, id: linkId } as Link);
-        setLinks(Array.from(linksMap.values()));
-      } else {
-        linksMap.delete(linkId);
-        setLinks(Array.from(linksMap.values()));
-      }
+       setLinks(prevLinks => {
+        const linksMap = new Map(prevLinks.map(l => [l.id, l]));
+        if (linkData) {
+          const existingLink = linksMap.get(linkId) || {};
+          const updatedLink = { ...existingLink, ...linkData, id: linkId } as Link;
+          linksMap.set(linkId, updatedLink);
+        } else {
+          linksMap.delete(linkId);
+        }
+        return Array.from(linksMap.values());
+      });
     });
 
     const handleHashChange = () => {
-      window.location.reload(); // Simplest way to switch models for this context
+      window.location.reload();
     };
     window.addEventListener('hashchange', handleHashChange);
 
@@ -87,11 +89,9 @@ const App: React.FC = () => {
   const handleToggleSlices = useCallback(() => {
     const isEnabling = !showSlices;
     if (isEnabling) {
-      // Unfix all nodes to allow animation
       const updatedNodes = nodes.map(n => ({...n, fx: null, fy: null}));
       setNodes(updatedNodes);
     } else {
-      // Restore manual positions and fix them
       const updatedNodes = nodes.map(n => {
         const manualPos = manualPositionsRef.current.get(n.id);
         return {...n, fx: manualPos?.x ?? n.x, fy: manualPos?.y ?? n.y };
@@ -103,7 +103,6 @@ const App: React.FC = () => {
 
   const handleAddNode = useCallback((type: ElementType) => {
     if (!modelId) return;
-    // New nodes are always created with a "manual" home position.
     const manualX = window.innerWidth / 2 + (Math.random() - 0.5) * 50;
     const manualY = window.innerHeight / 2 + (Math.random() - 0.5) * 50;
     
@@ -114,20 +113,17 @@ const App: React.FC = () => {
       description: '',
       x: manualX,
       y: manualY,
-      // Fix the position in the manual layout.
       fx: manualX,
       fy: manualY,
     };
 
     if (type === ElementType.Trigger) {
-        newNode.stereotype = 'Actor'; // Default stereotype
+        newNode.stereotype = 'Actor';
     }
     
     gunService.getModel(modelId).get('nodes').get(newNode.id).put(newNode as any);
     
     if (showSlices) {
-      // If in slice view, un-fix the node immediately to let it animate.
-      // A brief timeout allows React to process the state update first.
       setTimeout(() => {
           setNodes(prevNodes => prevNodes.map(n => n.id === newNode.id ? {...n, fx: null, fy: null} : n));
       }, 50);
@@ -224,8 +220,19 @@ const App: React.FC = () => {
   }, [modelId, links]);
 
   const handleNodeDrag = useCallback((nodeId: string, x: number, y: number) => {
-    if (!modelId || showSlices) return; // Don't allow dragging in slice view
-    gunService.getModel(modelId).get('nodes').get(nodeId).put({ fx: x, fy: y } as any);
+    if (!modelId || showSlices) return;
+
+    // Perform an optimistic UI update to prevent the node from snapping back.
+    setNodes(prevNodes => prevNodes.map(n => 
+      n.id === nodeId ? { ...n, x, y, fx: x, fy: y } : n
+    ));
+    
+    // Update the ref for consistency when toggling slice view.
+    manualPositionsRef.current.set(nodeId, { x, y });
+    
+    // Persist only the positional changes to GUN.
+    const positionUpdate = { x, y, fx: x, fy: y };
+    gunService.getModel(modelId).get('nodes').get(nodeId).put(positionUpdate as any);
   }, [modelId, showSlices]);
 
   const handleExport = useCallback(() => {
