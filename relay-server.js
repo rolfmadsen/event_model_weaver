@@ -1,4 +1,4 @@
-// relay-server.js (Simplified)
+// relay-server.js
 
 import Gun from 'gun'; // Only import the core GUN library
 import http from 'http';
@@ -29,7 +29,6 @@ const server = http.createServer((req, res) => {
 });
 
 // Attach GUN to the server - MINIMAL options
-// We remove localStorage and radisk as this is a stateless relay
 const gun = Gun({
   web: server,    // Crucial: Attaches GUN's WebSocket handler
   localStorage: false,
@@ -37,7 +36,7 @@ const gun = Gun({
 });
 
 // Use PORT from environment (Koyeb sets this) or default to 8765 for local dev
-const PORT = process.env.PORT || 8765; // Still use 8765 locally
+const PORT = process.env.PORT || 8765; // 8765 is just a local fallback
 
 server.listen(PORT, '0.0.0.0', () => { // Listen on all interfaces
   console.log('╔════════════════════════════════════════════╗');
@@ -57,7 +56,7 @@ gun.on('bye', (peer) => {
   console.log('👋 Peer disconnected:', new Date().toISOString());
 });
 
-// Graceful shutdown (unchanged)
+// Graceful shutdown
 process.on('SIGINT', () => {
   console.log('\n🛑 Shutting down relay server...');
   server.close(() => {
