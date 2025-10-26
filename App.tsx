@@ -6,10 +6,16 @@ import PropertiesPanel from './components/PropertiesPanel';
 import Header from './components/Header';
 import Footer from './components/Footer';
 import { Node, Link, ElementType, ModelData } from './types';
-import gunService from './services/gunService';
+import gunService, { UserPresence, CursorPosition } from './services/gunService';
 import validationService from './services/validationService';
 import sliceService from './services/sliceService';
 import layoutService from './services/layoutService';
+
+// Generate a unique user ID for this session
+const USER_ID = uuidv4();
+const USER_NAME = `User ${USER_ID.slice(0, 4)}`;
+const USER_COLORS = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F7DC6F'];
+const USER_COLOR = USER_COLORS[Math.floor(Math.random() * USER_COLORS.length)];
 
 const App: React.FC = () => {
   const [modelId, setModelId] = useState<string | null>(null);
@@ -19,8 +25,15 @@ const App: React.FC = () => {
   const [focusOnRender, setFocusOnRender] = useState(false);
   const [showSlices, setShowSlices] = useState(false);
   
+  // Collaboration state
+  const [activeUsers, setActiveUsers] = useState<Record<string, UserPresence>>({});
+  const [cursors, setCursors] = useState<Record<string, CursorPosition>>({});
+  
   const manualPositionsRef = useRef(new Map<string, { x: number, y: number }>());
+  const presenceIntervalRef = useRef<number | undefined>(undefined);
+  const cursorThrottleRef = useRef<number | undefined>(undefined);
 
+  // Initialize model and subscriptions
   useEffect(() => {
     const getModelIdFromHash = () => window.location.hash.replace(/^#/, '');
     
@@ -31,7 +44,7 @@ const App: React.FC = () => {
     }
     setModelId(currentModelId);
     
-    // --- GUN Data Subscriptions ---
+    // Subscribe to nodes
     const nodesGraph = gunService.getModel(currentModelId).get('nodes');
     nodesGraph.map().on((nodeData: Partial<Node> | null, nodeId: string) => {
       setNodes(prevNodes => {
@@ -40,7 +53,6 @@ const App: React.FC = () => {
           const existingNode = nodesMap.get(nodeId) || {};
           const updatedNode = { ...existingNode, ...nodeData, id: nodeId } as Node;
           nodesMap.set(nodeId, updatedNode);
-
           if (updatedNode.fx != null && updatedNode.fy != null) {
             manualPositionsRef.current.set(nodeId, { x: updatedNode.fx, y: updatedNode.fy });
           }
@@ -52,6 +64,7 @@ const App: React.FC = () => {
       });
     });
     
+    // Subscribe to links
     const linksGraph = gunService.getModel(currentModelId).get('links');
     linksGraph.map().on((linkData: Partial<Link> | null, linkId: string) => {
        setLinks(prevLinks => {
@@ -67,15 +80,71 @@ const App: React.FC = () => {
       });
     });
 
+    // Subscribe to presence
+    const unsubPresence = gunService.subscribeToPresence(currentModelId, (users) => {
+      setActiveUsers(users);
+    });
+
+    // Subscribe to cursors
+    const unsubCursors = gunService.subscribeToCursors(currentModelId, (cursors) => {
+      setCursors(cursors);
+    });
+
+    // Update presence every 10 seconds
+    gunService.updatePresence(currentModelId, USER_ID, USER_NAME, USER_COLOR);
+    presenceIntervalRef.current = window.setInterval(() => {
+      gunService.updatePresence(currentModelId, USER_ID, USER_NAME, USER_COLOR);
+    }, 10000);
+
     const handleHashChange = () => {
       window.location.reload();
     };
     window.addEventListener('hashchange', handleHashChange);
 
+    // Cleanup function
     return () => {
+      // Stop presence updates
+      if (presenceIntervalRef.current) {
+        clearInterval(presenceIntervalRef.current);
+      }
+      
+      // Remove user presence and cursor
+      gunService.removePresence(currentModelId, USER_ID);
+      gunService.removeCursor(currentModelId, USER_ID);
+      
+      // Unsubscribe from all GUN listeners
+      nodesGraph.map().off();
+      linksGraph.map().off();
+      unsubPresence();
+      unsubCursors();
+      
       window.removeEventListener('hashchange', handleHashChange);
     };
   }, []);
+
+  // Track mouse movement for cursor sharing
+  useEffect(() => {
+    if (!modelId) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      // Throttle cursor updates to every 100ms
+      if (cursorThrottleRef.current) return;
+      
+      cursorThrottleRef.current = window.setTimeout(() => {
+        gunService.updateCursor(modelId, USER_ID, e.clientX, e.clientY);
+        cursorThrottleRef.current = undefined;
+      }, 100);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      if (cursorThrottleRef.current) {
+        clearTimeout(cursorThrottleRef.current);
+      }
+    };
+  }, [modelId]);
 
   const { slices, nodeSliceMap, swimlanePositions } = useMemo(() => {
     if (!showSlices || nodes.length === 0) {
@@ -116,19 +185,22 @@ const App: React.FC = () => {
       fx: manualX,
       fy: manualY,
     };
-
     if (type === ElementType.Trigger) {
         newNode.stereotype = 'Actor';
     }
     
-    gunService.getModel(modelId).get('nodes').get(newNode.id).put(newNode as any);
+    gunService.getModel(modelId).get('nodes').get(newNode.id).put(newNode as any, (ack: any) => {
+      if (ack.err) {
+        console.error('Failed to add node:', ack.err);
+        alert('Failed to add node. Please try again.');
+      }
+    });
     
     if (showSlices) {
       setTimeout(() => {
           setNodes(prevNodes => prevNodes.map(n => n.id === newNode.id ? {...n, fx: null, fy: null} : n));
       }, 50);
     }
-
     setSelection({ type: 'node', id: newNode.id });
     setFocusOnRender(true);
   }, [modelId, showSlices]);
@@ -158,15 +230,17 @@ const App: React.FC = () => {
     
     const sourceNode = nodes.find(n => n.id === sourceId);
     const targetNode = nodes.find(n => n.id === targetId);
-
     const rule = validationService.getConnectionRule(sourceNode!, targetNode!);
     if (!rule) return;
-
     if (links.some(l => l.source === sourceId && l.target === targetId)) return;
-
     const newLink: Link = { id: uuidv4(), source: sourceId, target: targetId, label: rule.verb };
     
-    gunService.getModel(modelId).get('links').get(newLink.id).put(newLink as any);
+    gunService.getModel(modelId).get('links').get(newLink.id).put(newLink as any, (ack: any) => {
+      if (ack.err) {
+        console.error('Failed to add link:', ack.err);
+        alert('Failed to add link. Please try again.');
+      }
+    });
     setSelection({ type: 'link', id: newLink.id });
     setFocusOnRender(true);
   }, [nodes, links, modelId]);
@@ -183,7 +257,11 @@ const App: React.FC = () => {
         }
     });
     if (Object.keys(changes).length > 0) {
-        gunService.getModel(modelId).get('nodes').get(updatedNode.id).put(changes as any);
+        gunService.getModel(modelId).get('nodes').get(updatedNode.id).put(changes as any, (ack: any) => {
+          if (ack.err) {
+            console.error('Failed to update node:', ack.err);
+          }
+        });
     }
   }, [modelId, nodes]);
   
@@ -199,19 +277,31 @@ const App: React.FC = () => {
         }
     });
     if (Object.keys(changes).length > 0) {
-        gunService.getModel(modelId).get('links').get(updatedLink.id).put(changes as any);
+        gunService.getModel(modelId).get('links').get(updatedLink.id).put(changes as any, (ack: any) => {
+          if (ack.err) {
+            console.error('Failed to update link:', ack.err);
+          }
+        });
     }
   }, [modelId, links]);
 
   const handleDeleteLink = useCallback((linkId: string) => {
     if (!modelId) return;
-    gunService.getModel(modelId).get('links').get(linkId).put(null as any);
+    gunService.getModel(modelId).get('links').get(linkId).put(null as any, (ack: any) => {
+      if (ack.err) {
+        console.error('Failed to delete link:', ack.err);
+      }
+    });
     setSelection(null);
   }, [modelId]);
 
   const handleDeleteNode = useCallback((nodeId: string) => {
     if (!modelId) return;
-    gunService.getModel(modelId).get('nodes').get(nodeId).put(null as any);
+    gunService.getModel(modelId).get('nodes').get(nodeId).put(null as any, (ack: any) => {
+      if (ack.err) {
+        console.error('Failed to delete node:', ack.err);
+      }
+    });
     const linksToDelete = links.filter(link => link.source === nodeId || link.target === nodeId);
     linksToDelete.forEach(link => {
       gunService.getModel(modelId).get('links').get(link.id).put(null as any);
@@ -221,18 +311,19 @@ const App: React.FC = () => {
 
   const handleNodeDrag = useCallback((nodeId: string, x: number, y: number) => {
     if (!modelId || showSlices) return;
-
-    // Perform an optimistic UI update to prevent the node from snapping back.
+    
     setNodes(prevNodes => prevNodes.map(n => 
       n.id === nodeId ? { ...n, x, y, fx: x, fy: y } : n
     ));
     
-    // Update the ref for consistency when toggling slice view.
     manualPositionsRef.current.set(nodeId, { x, y });
     
-    // Persist only the positional changes to GUN.
     const positionUpdate = { x, y, fx: x, fy: y };
-    gunService.getModel(modelId).get('nodes').get(nodeId).put(positionUpdate as any);
+    gunService.getModel(modelId).get('nodes').get(nodeId).put(positionUpdate as any, (ack: any) => {
+      if (ack.err) {
+        console.error('Failed to update node position:', ack.err);
+      }
+    });
   }, [modelId, showSlices]);
 
   const handleExport = useCallback(() => {
@@ -278,20 +369,79 @@ const App: React.FC = () => {
 
   const selectedItem = useMemo(() => {
     if (!selection) return null;
-
     if (selection.type === 'node') {
       const node = nodes.find(n => n.id === selection.id);
       if (node) return { type: 'node' as const, data: node };
-    } else { // 'link'
+    } else {
       const link = links.find(l => l.id === selection.id);
       if (link) return { type: 'link' as const, data: link };
     }
     return null;
   }, [selection, nodes, links]);
 
+  // Filter out current user from active users display
+  const otherUsers = useMemo(() => {
+    const filtered = { ...activeUsers };
+    delete filtered[USER_ID];
+    return filtered;
+  }, [activeUsers]);
+
+  // Filter out current user's cursor
+  const otherCursors = useMemo(() => {
+    const filtered = { ...cursors };
+    delete filtered[USER_ID];
+    return filtered;
+  }, [cursors]);
+
   return (
     <div className="w-screen h-screen overflow-hidden relative font-sans">
       <Header onImport={handleImport} onExport={handleExport} onToggleSlices={handleToggleSlices} slicesVisible={showSlices} />
+      
+      {/* Active Users Indicator */}
+      {Object.keys(otherUsers).length > 0 && (
+        <div className="absolute top-16 right-4 bg-white shadow-lg rounded-lg p-3 z-50">
+          <div className="text-xs font-semibold text-gray-600 mb-2">Active Users ({Object.keys(otherUsers).length})</div>
+          {Object.values(otherUsers).map(user => (
+            <div key={user.userId} className="flex items-center gap-2 mb-1">
+              <div 
+                className="w-3 h-3 rounded-full" 
+                style={{ backgroundColor: user.color }}
+              />
+              <span className="text-xs text-gray-700">{user.userName}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Other Users' Cursors */}
+      {Object.values(otherCursors).map(cursor => {
+        const user = activeUsers[cursor.userId];
+        // Skip if user data hasn't loaded yet
+        if (!user || !user.color || !user.userName) return null;
+        return (
+          <div
+            key={cursor.userId}
+            className="absolute pointer-events-none z-50"
+            style={{
+              left: cursor.x,
+              top: cursor.y,
+              transform: 'translate(-50%, -50%)'
+            }}
+          >
+            <div 
+              className="w-4 h-4 rounded-full border-2 border-white"
+              style={{ backgroundColor: user.color }}
+            />
+            <div 
+              className="text-xs font-semibold mt-1 px-2 py-1 rounded bg-white shadow-md whitespace-nowrap"
+              style={{ color: user.color }}
+            >
+              {user.userName}
+            </div>
+          </div>
+        );
+      })}
+
       <GraphCanvas 
           nodes={nodes} 
           links={links}
